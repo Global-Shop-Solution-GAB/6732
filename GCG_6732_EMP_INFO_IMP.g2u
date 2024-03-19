@@ -1,0 +1,150 @@
+﻿Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+'ARC#6732
+'Customer: Richard Manufacturing Co
+
+'Richard MFG is using Paylocity as their Payroll Provider and would like to integrate it with GSS. The
+'integration will be passing payroll T&A from GSS to Paylocity, and update specific GSS employee
+'master records from changes that are made in Paylocity.
+'Richard MFG has employee master records that change quarterly based on pay rate changes and
+'need a simple way of keep GSS and Paylocity synced with the same data for the employee master.
+
+
+'This script allows user to choose a file to import Employee Info
+'The file must be in Excel Sheet
+'Columns: COMPANY_CODE*!*EMPLOYEEID*!*NAME_FIRST*!*NAME_LAST*!*ADDRESS1*!*ADDRESS2*!*CITY*!*ZIP*!*EMAIL*!*PHONE*!*DATE_TERMINATION
+' the scripts will:
+'	skip 01 Header line
+'	skip COMPANY_CODE, NAME_FIST, NAME_LAST
+'	combine ADDRESS1 and ADDRESS2 into 1 field ADDRESS
+
+
+Program.Sub.Main.Start
+f.Intrinsic.Control.Try
+
+Function.Intrinsic.UI.UsePixels ' Allows you to use Pixels instead of Twips throughout
+	v.Local.sFile.Declare(String)
+	v.Local.sRet.Declare(String)
+	v.Local.bInString.Declare(Boolean)
+	v.Local.bExists.Declare(Boolean)
+	v.Local.sEmpoyeeInfo.Declare(String)
+	v.Local.sSQL.Declare(String)
+	v.Local.iCounter.Declare(Long)
+	v.Local.sTermDate.Declare(String)
+	
+	v.Local.sAddress1.Declare(String)
+	v.Local.sAddress2.Declare(String)
+	v.Local.sCity.Declare(String)
+	v.Local.sZip.Declare(String)
+	v.Local.sEmail.Declare(String)
+	v.Local.sPhone.Declare(String)
+	
+	'Browse file
+	'	Validate if file is valid
+	'	user did not click CANCEL
+	'	.xls or .xlsx
+	'	file exists
+	'----------------------------------------------------
+	'file dialog
+	f.Intrinsic.UI.ShowOpenFileDialog("", "*.xls", "", v.Local.sFile)
+	
+	#Region "Validate File"
+	'CANCEL
+	f.Intrinsic.Control.If(v.Local.sFile,=,"***CANCEL***")
+		'unload
+		f.Intrinsic.Control.ExitSub
+	f.Intrinsic.Control.EndIf
+	
+	'File Exists
+	f.Intrinsic.File.Exists(v.Local.sFile, v.Local.bExists)
+	f.Intrinsic.Control.If(v.Local.bExists,=,False)
+		f.Intrinsic.UI.Msgbox("File does not exists.")
+		f.Intrinsic.Control.ExitSub
+	f.Intrinsic.Control.EndIf
+	
+	'Extension
+	f.Intrinsic.String.IsInString(v.Local.sFile, ".xls", True, v.Local.bInString)
+	
+	f.Intrinsic.Control.If(v.Local.bInString,=,False)
+		f.Intrinsic.UI.Msgbox("Invalid file. Must be MS Excel.")
+		f.Intrinsic.Control.ExitSub
+	f.Intrinsic.Control.EndIf
+	
+	#End Region
+	'----------------------------------------------------
+	
+	
+	
+	'Read file
+	'	remove header lines
+	'	read file into datatable
+	'	filter bad data: data with blank EMPLOYEEID
+	'----------------------------------------------------
+	f.Intrinsic.UI.InvokeWaitDialog("Reading File...")
+	f.Automation.MSExcel.ReadSpreadsheet(v.Local.sFile, v.Local.sRet)
+	f.Intrinsic.String.Split(v.Local.sRet, "&^&", v.Local.sRet)
+	
+	'get rid of header
+	#Region "Remove header"
+	f.Intrinsic.String.Split(v.Local.sRet(0), "$!$", v.Local.sEmpoyeeInfo)
+	v.Local.sEmpoyeeInfo(0).Set("REMOVEDHEADER")
+	f.Intrinsic.String.Join(v.Local.sEmpoyeeInfo, "$!$", v.Local.sEmpoyeeInfo)
+	f.Intrinsic.String.Replace(v.Local.sEmpoyeeInfo, "REMOVEDHEADER$!$", "", v.Local.sEmpoyeeInfo)
+	
+	'read into datatables
+	f.Data.Datatable.CreateFromString("dtEmployeeRaw", v.Local.sEmpoyeeInfo, "COMPANY_CODE*!*EMPLOYEEID*!*NAME_FIRST*!*NAME_LAST*!*ADDRESS1*!*ADDRESS2*!*CITY*!*ZIP*!*EMAIL*!*PHONE*!*DATE_TERMINATION", "string*!*string*!*string*!*string*!*string*!*string*!*string*!*string*!*string*!*string*!*string", "*!*", "$!$")
+	
+	f.Data.DataView.Create("dtEmployeeRaw", "dvEmpTemp", 22, "EMPLOYEEID<>''", "")
+	f.Data.DataView.ToDataTable("dtEmployeeRaw", "dvEmpTemp", "dtEmployee")
+	f.Data.DataView.Close("dtEmployeeRaw","dvEmpTemp")
+	f.Data.Datatable.Close("dtEmployeeRaw")
+	'----------------------------------------------------
+	
+	
+	
+	'Import
+	'	Read thru each line
+	'	Build Update command
+	'	Execute
+	'	Counting and result?
+	'----------------------------------------------------
+	f.Intrinsic.Control.If(v.DataTable.dtEmployee.RowCount,=,0)
+		f.Intrinsic.UI.Msgbox("No New Valid Records from the File.")
+		f.Intrinsic.Control.End
+	f.Intrinsic.Control.EndIf
+	
+	'LPAD EmpID
+	f.Data.Datatable.AddColumn("dtEmployee", "EMP_ID_FULL", String)
+	f.Data.Datatable.SetValueFormat("dtEmployee", -1, "EMPLOYEEID", "EMP_ID_FULL", "0000#")
+	
+	f.ODBC.Connection!Con.OpenCompanyConnection(999)
+	'loop
+	f.Intrinsic.Control.For(v.Local.iCounter,0,v.DataTable.dtEmployee.RowCount--,1)
+		f.Intrinsic.String.Format(v.DataTable.dtEmployee(v.Local.iCounter).DATE_TERMINATION!FieldVal, "MMDDYY", v.Local.sTermDate)
+		v.Local.sAddress1.Set(v.DataTable.dtEmployee(v.Local.iCounter).ADDRESS1!FieldValTrim)
+		v.Local.sAddress2.Set(v.DataTable.dtEmployee(v.Local.iCounter).ADDRESS2!FieldValTrim)
+		v.Local.sCity.Set(v.DataTable.dtEmployee(v.Local.iCounter).CITY!FieldValTrim)
+		v.Local.sZip.Set(v.DataTable.dtEmployee(v.Local.iCounter).ZIP!FieldValTrim)
+		v.Local.sEmail.Set(v.DataTable.dtEmployee(v.Local.iCounter).EMAIL!FieldValTrim)
+		v.Local.sPhone.Set(v.DataTable.dtEmployee(v.Local.iCounter).PHONE!FieldValTrim)
+		
+		f.Intrinsic.String.Build("update EMPLOYEE_MSTR set ADDRESS='{0} {1}', CITY='{2}', ZIP_CODE='{3}', PHONE='{4}', EMAIL_ADDR='{5}', DATE_TERMINATION='{6}' where EMPLOYEE='{7}'", v.Local.sAddress1.PSQLFriendly, v.Local.sAddress2.PSQLFriendly, v.Local.sCity.PSQLFriendly, v.Local.sZip.PSQLFriendly, v.Local.sPhone.PSQLFriendly, v.Local.sEmail.PSQLFriendly, v.Local.sTermDate, v.DataTable.dtEmployee(v.Local.iCounter).EMP_ID_FULL!FieldValTrim, v.Local.sSQL)
+		f.ODBC.Connection!Con.Execute(v.Local.sSQL)
+	f.Intrinsic.Control.Next(v.Local.iCounter)
+	
+	f.ODBC.Connection!Con.Close
+	'----------------------------------------------------
+
+	F.Intrinsic.UI.Msgbox("Import Completed.")
+	
+f.Intrinsic.Control.Catch
+	f.Intrinsic.UI.Msgbox(v.Ambient.ErrorDescription)
+f.Intrinsic.Control.EndTry
+
+Program.Sub.Main.End
+
+Program.Sub.Comments.Start
+${$5$}$3.0.0.0$}$1
+${$6$}$nle$}$20220525180746457$}$kjzCRYkA6UEoRnCwndYnRUA1sRHcWHr/j2qSvc+Uz4Bj827Pkj2HQa34DymIgT1Z
+Program.Sub.Comments.End

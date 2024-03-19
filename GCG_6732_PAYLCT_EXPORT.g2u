@@ -1,0 +1,273 @@
+Program.Sub.ScreenSU.Start
+Gui.Form..Create(BaseForm)
+Gui.Form..Caption("Export Punch Time for Paylocity")
+Gui.Form..Size(4425,2790)
+Gui.Form..MinX(0)
+Gui.Form..MinY(0)
+Gui.Form..Position(0,0)
+Gui.Form..AlwaysOnTop(False)
+Gui.Form..FontName("Tahoma")
+Gui.Form..FontSize(8.25)
+Gui.Form..ControlBox(True)
+Gui.Form..MaxButton(True)
+Gui.Form..MinButton(True)
+Gui.Form..MousePointer(0)
+Gui.Form..Moveable(True)
+Gui.Form..Sizeable(True)
+Gui.Form..ShowInTaskBar(True)
+Gui.Form..TitleBar(True)
+Gui.Form..Event(UnLoad,Form_UnLoad)
+Gui.Form.dtpBegin.Create(DatePicker)
+Gui.Form.dtpBegin.Enabled(True)
+Gui.Form.dtpBegin.Visible(True)
+Gui.Form.dtpBegin.Zorder(0)
+Gui.Form.dtpBegin.Size(1500,300)
+Gui.Form.dtpBegin.Position(330,675)
+Gui.Form.dtpBegin.CheckBox(False)
+Gui.Form.dtpBegin.FontName("Tahoma")
+Gui.Form.dtpBegin.FontSize(8.25)
+Gui.Form.dtpEnd.Create(DatePicker)
+Gui.Form.dtpEnd.Enabled(True)
+Gui.Form.dtpEnd.Visible(True)
+Gui.Form.dtpEnd.Zorder(0)
+Gui.Form.dtpEnd.Size(1500,300)
+Gui.Form.dtpEnd.Position(2625,675)
+Gui.Form.dtpEnd.CheckBox(False)
+Gui.Form.dtpEnd.FontName("Tahoma")
+Gui.Form.dtpEnd.FontSize(8.25)
+Gui.Form.lbl1.Create(Label,"Begin Date",True,780,195,0,330,420,True,0,"Tahoma",8.25,,0,0)
+Gui.Form.lbl1.BorderStyle(0)
+Gui.Form.lbl2.Create(Label,"End Date",True,660,195,0,2625,420,True,0,"Tahoma",8.25,,0,0)
+Gui.Form.lbl2.BorderStyle(0)
+Gui.Form.cmdExport.Create(Button)
+Gui.Form.cmdExport.Enabled(True)
+Gui.Form.cmdExport.Visible(True)
+Gui.Form.cmdExport.Zorder(0)
+Gui.Form.cmdExport.Size(1125,345)
+Gui.Form.cmdExport.Position(1605,1740)
+Gui.Form.cmdExport.Caption("Export")
+Gui.Form.cmdExport.FontName("Tahoma")
+Gui.Form.cmdExport.FontSize(8.25)
+Gui.Form.cmdExport.Event(Click,cmdExport_Click)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+' Export payroll file for PAYLOCITY
+' Customer: Richard Manf Co.
+' May 2022, Nam Le
+
+' hook: 15290 => move to Custom Menu Item since Customer does not use Earning Codes
+' tables: V_TIME_ATTENDANCE
+
+' File format:
+' 	1. KEY (EMPID)
+' 	2. Date (Date in/out) 
+'	3. Time (Time in/out)
+'	4. Record Type (Clock In/Clock Out)
+
+'write file and export to FTP
+
+Program.Sub.Main.Start
+f.Intrinsic.Control.Try
+
+gui.Form..Show
+
+f.Intrinsic.Control.Catch
+	f.Intrinsic.Control.CallSub(Catching)
+f.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.GetData.Start
+f.Intrinsic.Control.Try
+
+	v.Local.sBegDate.Declare(String)
+	v.Local.sEndDate.Declare(String)
+	v.Local.sTime.Declare(String)
+	v.Local.sType.Declare(String)
+	v.Local.sSQL.Declare(String)
+	v.Local.dDate.Declare(String)
+	v.Local.lCounter.Declare(Long)
+	v.Local.sTime24.Declare(String)
+	v.Local.lHourTemp.Declare(Long)
+	v.Local.sHour.Declare(String)
+	v.Local.sMinute.Declare(String)
+	v.Local.sTimeTemp.Declare(String)
+	v.Local.sAMPM.Declare(String)
+	
+'	f.Intrinsic.String.Left(Variable.Passed.BEGDATE,8,v.Local.sBegDate)
+'	
+'	f.Intrinsic.Date.ConvertDString(v.Local.sBegDate, "YYYYMMDD", v.Local.dDate)
+'	f.Intrinsic.String.Format(v.Local.dDate, "YYYY-MM-DD", v.Local.sBegDate)
+
+'	f.Intrinsic.String.Left(Variable.Passed.ENDDATE,8,v.Local.sEndDate)
+'	
+'	f.Intrinsic.Date.ConvertDString(v.Local.sEndDate, "YYYYMMDD", v.Local.dDate)
+'	f.Intrinsic.String.Format(v.Local.dDate, "YYYY-MM-DD", v.Local.sEndDate)
+	
+	'May 26 - Switch to using Datepickers
+	v.Local.dDate.Set(v.Screen.Form!dtpBegin.Value)
+	v.Local.sBegDate.Set(v.Local.dDate.PervasiveDate)
+	
+	v.Local.dDate.Set(v.Screen.Form!dtpEnd.Value)
+	v.Local.sEndDate.Set(v.Local.dDate.PervasiveDate)
+
+	f.ODBC.Connection!Con.OpenCompanyConnection
+	
+'	f.Intrinsic.String.Build("select EMPLOYEE EMPID, LEFT(DATE_IN,10) DDate, LEFT(TIME_IN,5) TTime, 'IN' MODE from V_TIME_ATTENDANCE where DATE_IN between '{0}' and '{1}' and EMPLOYEE in (select employee from V_EMPLOYEE_MSTR where PAY_TYPE='H') and Clocked_In <> 'Y'", v.Local.sBegDate, v.Local.sEndDate, v.Local.sSQL)
+	f.Intrinsic.String.Build("select case when B.COMMENTS_2 = '' then A.EMPLOYEE else RTRIM(B.COMMENTS_2) end as EMPID, A.DATE_IN DDate, TIME_IN TTime, 'CLOCK IN' MODE from V_TIME_ATTENDANCE A left join V_EMPLOYEE_MSTR B on RTRIM(A.EMPLOYEE) = RTRIM(B.EMPLOYEE) where DATE_IN between '{0}' and '{1}' and RTRIM(A.EMPLOYEE) in (select RTRIM(employee) from V_EMPLOYEE_MSTR where PAY_TYPE='H') and Clocked_In <> 'Y'", v.Local.sBegDate, v.Local.sEndDate, v.Local.sSQL)
+	
+	f.Intrinsic.Control.If(v.DataTable.dtTimeIn.Exists)
+		f.Data.DataTable.Close("dtTimeIn")
+	f.Intrinsic.Control.EndIf
+	
+	f.Data.DataTable.CreateFromSQL("dtTimeIn", "Con", v.Local.sSQL, True)
+	
+'	f.Intrinsic.String.Build("select EMPLOYEE EMPID, LEFT(DATE_OUT,10) DDate, LEFT(TIME_OUT,5) TTime, 'OUT' MODE from V_TIME_ATTENDANCE where DATE_IN between '{0}' and '{1}' and DATE_OUT between '{0}' and '{1}' and EMPLOYEE in (select employee from V_EMPLOYEE_MSTR where PAY_TYPE='H') and Clocked_In <> 'Y'", v.Local.sBegDate, v.Local.sEndDate, v.Local.sSQL)
+	f.Intrinsic.String.Build("select case when B.COMMENTS_2 = '' then A.EMPLOYEE else RTRIM(B.COMMENTS_2) end as EMPID, DATE_OUT DDate, TIME_OUT TTime, 'CLOCK OUT' MODE from V_TIME_ATTENDANCE A left join V_EMPLOYEE_MSTR B on RTRIM(A.EMPLOYEE) = RTRIM(B.EMPLOYEE) where DATE_IN between '{0}' and '{1}' and RTRIM(A.EMPLOYEE) in (select RTRIM(employee) from V_EMPLOYEE_MSTR where PAY_TYPE='H') and Clocked_In <> 'Y'", v.Local.sBegDate, v.Local.sEndDate, v.Local.sSQL)
+	
+	f.Intrinsic.Control.If(v.DataTable.dtTimeOut.Exists)
+		f.Data.DataTable.Close("dtTimeOut")
+	f.Intrinsic.Control.EndIf
+	
+	f.Data.DataTable.CreateFromSQL("dtTimeOut", "Con", v.Local.sSQL, True)
+	
+	f.Data.DataTable.Merge("dtTimeIn", "dtTimeOut", True, 2)
+	
+	f.Data.DataView.Create("dtTimeOut", "dvPayroll")
+	f.Data.DataView.SetSort("dtTimeOut", "dvPayroll", "EMPID,DDate,TTime")
+	
+	f.ODBC.Connection!Con.Close
+	
+f.Intrinsic.Control.Catch
+	f.Intrinsic.Control.CallSub(Catching)
+f.Intrinsic.Control.EndTry
+Program.Sub.GetData.End
+
+Program.Sub.ExportFile.Start
+f.Intrinsic.Control.Try
+	v.Local.sContents.Declare(String)
+	v.Local.sFileName.Declare(String)
+	v.Local.bExt.Declare(Boolean)
+	v.Local.sUploadFile.Declare(String)
+	v.Local.sTemp.Declare(String)
+	
+	f.Intrinsic.Control.If(v.DataTable.dtTimeOut.RowCount,=,0)
+		f.Intrinsic.UI.Msgbox("No Records Found for This Date Range.")
+		f.Intrinsic.Control.CallSub(Form_UnLoad)
+	f.Intrinsic.Control.EndIf
+	
+	
+	f.Intrinsic.String.Build("{0}\6732\{1}_{2}_PunchImport.csv", v.Caller.FilesDir, v.Ambient.Now.FormatMM-DD-YYYY--HHMMSS, v.Caller.User, v.Local.sFileName)
+	f.Intrinsic.String.Build("{0}\6732\", v.Caller.FilesDir, v.Local.sTemp)
+	f.Intrinsic.String.Replace(v.Local.sFileName,v.Local.sTemp, "", v.Local.sUploadFile)
+	
+	f.Data.DataView.ToDataTable("dtTimeOut", "dvPayroll", "dtExport", True)
+	f.Data.DataTable.AddColumn("dtExport", "DDateFormat", "String")
+	f.Data.DataTable.SetValueFormat("dtExport",-1, "DDate", "DDateFormat", "MM/DD/YYYY")
+	f.Data.DataView.Create("dtExport", "dvExport")
+	f.Data.DataView.ToString("dtExport", "dvExport", "EMPID*!*DDateFormat*!*TTime*!*MODE", ",", v.Ambient.NewLine, v.Local.sContents)
+	
+	F.Intrinsic.File.String2File(V.Local.sFileName, V.Local.sContents)
+	
+	'Send FTP
+	f.Intrinsic.Control.CallSub(SendFTP, "argFile", v.Local.sFileName, "argUploadFile", v.Local.sUploadFile)
+
+f.Intrinsic.Control.Catch
+	f.Intrinsic.Control.CallSub(Catching)
+f.Intrinsic.Control.EndTry
+Program.Sub.ExportFile.End
+
+Program.Sub.SendFTP.Start
+f.Intrinsic.Control.Try
+	V.Local.bConnected.Declare(Boolean)
+	v.Local.sFile.Declare(String)
+	v.Local.sUploadFile.Declare(String)
+	v.Local.sRet.Declare(String)
+	
+	v.Local.sFile.Set(v.Args.argFile)
+	v.Local.sUploadFile.Set(v.Args.argUploadFile)
+	
+	f.ODBC.Connection!Con.OpenCompanyConnection
+		f.ODBC.Connection!Con.ExecuteAndReturn("select top 1 RTRIM(USERID), RTRIM(USERSECR), RTRIM(HOST), RTRIM(PORT) from GCG_6732_FTPINFO", v.Local.sRet)
+		f.Intrinsic.Control.If(v.Ambient.ExecuteAndReturnEOF,=,True)
+			f.Intrinsic.UI.Msgbox("Cannot find FTP setup. Please double check GCG_6732_FTPINFO and try again.")
+			f.Intrinsic.Control.End
+		f.Intrinsic.Control.EndIf
+	f.ODBC.Connection!Con.Close
+	
+	f.Intrinsic.String.Split(v.Local.sRet, "*!*", v.Local.sRet)
+	
+	f.Communication.SFTP.SetProperty("SSHAcceptServerAuthentication","true")
+	F.Communication.SFTP.SetProperty("User",v.Local.sRet(0))
+	F.Communication.SFTP.SetProperty("Password",v.Local.sRet(1))
+	F.Communication.SFTP.SetProperty("remoteHost",v.Local.sRet(2))
+	F.Communication.SFTP.SetProperty("remotePort",v.Local.sRet(3))
+	F.Communication.SFTP.Logon
+	
+	F.Communication.SFTP.ReadProperty("connected",V.Local.bConnected)
+	F.Intrinsic.Control.If(V.Local.bConnected,=,True)
+	    'Code to do stuff if connected
+'	    f.Intrinsic.UI.Msgbox("Connection Succeeded")
+	    F.Communication.SFTP.SetProperty("LocalFile",v.Local.sFile)
+		F.Communication.SFTP.SetProperty("RemoteFile",v.Local.sUploadFile)
+		F.Communication.FTP.SetProperty("TransferMode",2)
+		F.Communication.SFTP.Upload
+		F.Communication.SFTP.Logoff
+	
+	F.Intrinsic.Control.Else
+	    'Code to do stuff if not connected
+	    f.Intrinsic.UI.Msgbox("Connection Failed")
+	F.Intrinsic.Control.EndIf
+	f.Intrinsic.UI.Msgbox("Punch File Exported to Paylocity FTP.", "Export Complete")
+	
+	f.Intrinsic.Control.CallSub(Form_UnLoad)
+	
+f.Intrinsic.Control.Catch
+	f.Intrinsic.Control.CallSub(Catching)
+f.Intrinsic.Control.EndTry
+Program.Sub.SendFTP.End
+
+Program.Sub.Catching.Start
+v.Local.sError.Declare(String)
+f.Intrinsic.String.Build("{0}:{1}", v.Ambient.ErrorNumber, v.Ambient.ErrorDescription, v.Local.sError)
+f.Intrinsic.UI.Msgbox(v.Local.sError)
+f.Intrinsic.Control.CallSub(Form_UnLoad)
+
+Program.Sub.Catching.End
+
+'command export
+Program.Sub.cmdExport_Click.Start
+f.Intrinsic.Control.Try
+	v.Local.sBeginDate.Declare(String)
+	v.Local.sEndDate.Declare(String)
+	
+	gui.Form..Enabled(False)
+	
+	'VALIDATION
+	'	make sure there is a begin and end date
+	v.Local.sBeginDate.Set(v.Screen.Form!dtpBegin.Value)
+	v.Local.sEndDate.Set(v.Screen.Form!dtpEnd.Value)
+	
+	f.Intrinsic.Control.If(v.Local.sBeginDate,=,"","OR", v.Local.sEndDate,=,"")
+		f.Intrinsic.UI.Msgbox("Please Select Begin and End Date")
+		f.Intrinsic.Control.ExitSub
+	f.Intrinsic.Control.EndIf
+	
+	f.Intrinsic.UI.InvokeWaitDialog("Exprorting File...")
+	
+	f.Intrinsic.Control.CallSub(GetData)
+	f.Intrinsic.Control.CallSub(ExportFile)
+f.Intrinsic.Control.Catch
+	f.Intrinsic.UI.Msgbox(v.Ambient.ErrorDescription)
+f.Intrinsic.Control.EndTry
+Program.Sub.cmdExport_Click.End
+
+Program.Sub.Form_UnLoad.Start
+f.Intrinsic.Control.End
+Program.Sub.Form_UnLoad.End
+
+Program.Sub.Comments.Start
+${$5$}$2.0.0.0$}$2
+${$6$}$nle$}$20220530160716263$}$kjzCRYkA6UEoRnCwndYnRUA1sRHcWHr/qHwdDLTdLsEt50c4EDCAyB6/JdKUSHtw
+Program.Sub.Comments.End
